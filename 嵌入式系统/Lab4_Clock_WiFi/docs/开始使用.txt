@@ -1,0 +1,124 @@
+实验四：SW1 一键联网校准北京时间
+工程：Lab4_Clock_WiFi
+保存位置：F:\embedded system\embedded system\CCS project\Lab4_Clock_WiFi
+原工程：F:\embedded system\embedded system\CCS project\Lab3_Clock（保留，未修改）
+
+一、已完成的程序行为
+1. 上电仍从实验三的 10:09:50 开始走时，保留现有 ST7735 表盘。
+2. 按一次板载 SW1（PF4），通过 ESP-01S 向公网 NTP 服务器请求时间。
+3. 收到有效回复后换算成北京时间 UTC+8，更新时钟并继续走时。
+4. 联网等待期间定时器继续运行。失败不改动时钟，可再次按键重试。
+5. 按键消抖约 30 ms；长按只触发一次；两次请求开始至少间隔 10 秒。
+6. 蓝灯：正在校时。绿灯：最近一次成功。红灯：最近一次失败。
+7. 默认依次尝试 ntp.aliyun.com 和 time.cloudflare.com，使用 UDP 123。
+8. 不需要电脑运行 USR TCP Server，不需要填写电脑 IP，也不使用 8899 端口。
+
+二、在 CCS 中导入
+File -> Import -> Code Composer Studio -> CCS Projects。
+选择本工程文件夹，勾选 Lab4_Clock_WiFi，完成导入。
+该工程已经在 CCS 工作区内部，不需要再勾选 Copy projects into workspace。
+选中 Lab4_Clock_WiFi 后 Build Project。不要误烧录 Lab3_Clock。
+BuildCheck 中的 .out 是命令行验证产物；日常仍建议在 CCS 中编译和调试。
+
+三、热点设置与密码
+iPhone：打开蜂窝数据、个人热点、允许其他人加入和最大兼容性。
+本地 TCP 透传成功只说明局域网可通，取公网时间还需要热点能访问互联网。
+wifi_config.h 中热点名称默认为 Miles，密码故意留空。
+密码留空时程序使用 ESP 模块已经连接/记住的 Wi-Fi，并等待自动重连最多约 30 秒。
+这依赖模块实际保存了热点信息，不能仅根据之前一次连接成功就保证断电后仍能恢复。
+更明确的方式：在本机编辑 wifi_config.h 的 LAB4_WIFI_SSID 和 LAB4_WIFI_PASSWORD，填入实际热点信息，再编译。
+密码仅在你本机填写，无需发给助手；填入后会包含在工程源文件和烧录程序中。
+C 字符串中的双引号写成 \"，反斜线写成 \\。不要把真实密码截图发出。
+
+四、信号连接（按引脚名称，勿凭模块朝向猜针脚）
+TM4C PC4（UART1 RX） <- ESP TX
+TM4C PC5（UART1 TX） -> ESP RX
+TM4C GND             -- ESP GND（必须共地）
+ESP VCC               -- 稳定的 3.3V 电源，建议电源有至少 500mA 输出余量
+ESP EN/CH_PD          -- 保持高电平；GPIO0/GPIO2 处于正常启动状态
+板载 SW1 已接 PF4，无需另接按钮。
+液晶原接线不变：SCK=PD0，MOSI=PD3，CS=PB1，DC=PC6，RST=PE5。
+UART 为 115200、8 数据位、无校验、1 停止位。
+
+ESP 供电和 UART 信号都不能直接接 5V。
+USB 底板上通常还连有 USB 串口芯片，不可把其 TX 与开发板 PC5 同时接到 ESP RX。
+关闭串口软件并不能消除两个硬件 TX 输出的冲突。
+建议 ESP 从 USB 串口底板取下后再按以上信号接开发板，另确认稳定的 3.3V 供电。
+如果想继续用现有 USB 底板供电，先根据底板正反面标识确认 3.3V、GND、TX、RX，隔离 USB 串口信号后再接；目前仅凭正面照片不能确认底板内部接法。
+
+五、验收步骤
+1. 打开手机热点，给开发板和 ESP 上电。
+2. 观察时钟从 10:09:50 正常走时。
+3. 按 SW1，蓝灯亮；等待几秒，首次连接热点可能更久。
+4. 成功后绿灯亮，显示跳到手机当前北京时间附近，之后继续走时。
+5. 关闭热点再试：应最终红灯，时钟继续走；恢复热点后再次按 SW1 重试。
+6. 再完整断电上电重做一次，验证配置/接线可以在学校复现。
+
+六、CCS 调试变量
+可添加到 Expressions：
+g_wifi_status：0 未校时；1 正在校时；2 已成功；3 失败。
+g_wifi_last_error：0 无错误；1 AT 无响应；2 AT 命令失败；3 未连接 Wi-Fi；4 加入热点失败；5 NTP 请求失败；6 串口错误/溢出；7 配置字符串过长或含换行。
+g_wifi_sync_count：成功次数。
+g_wifi_bad_packets：丢弃的无效 NTP 回复数量。
+红灯时先记录错误码。若错误码 1/6，先检查供电、共地、TX/RX、115200 波特率。
+错误码 3 时确认热点打开，并在 wifi_config.h 填写正确名称和密码后重编译。
+错误码 5 时检查手机移动网络及 UDP 123/DNS 可用性。
+若发生串口丢失导致发送长度状态不确定，重新给 ESP 上电，再按 SW1。
+
+七、验证范围
+已使用现有 TI ARM 20.2.7.LTS 编译器完成编译和链接。
+已从电脑当前网络向阿里云发送与程序同格式的 NTP 请求，服务器返回有效时间且请求标识匹配；本次往返约 125 ms。
+这不等于 ESP/开发板实机已经验证。尚未代为烧录、接线或验证实际 SW1 校时。
+这是实验用简单 NTP 校时，使用服务器发送时间及近似半程延迟补偿，不承诺高精度或密码学认证。
+
+参考资料
+ESP AT TCP/IP 命令：https://docs.espressif.com/projects/esp-at/en/release-v2.2.0.0_esp8266/AT_Command_Set/TCP-IP_AT_Commands.html
+NTP 报文规范：https://www.rfc-editor.org/rfc/rfc5905
+阿里云公共 NTP：https://help.aliyun.com/en/ecs/user-guide/alibaba-cloud-ntp-server/
+Cloudflare 公共 NTP：https://developers.cloudflare.com/time-services/ntp/usage/
+
+八、UART 验收输出（2026-10-26 更新）
+UART0：PA0/PA1，115200、8 数据位、无校验、1 停止位、无流控。
+UART1：PC4/PC5，继续专用于 ESP；现有已成功校时的 ESP 和屏幕接线不需要为日志改动。
+UART0 已连接开发板板载 ICDI 调试器，通过开发板 DEBUG/ICDI USB 口呈现为电脑虚拟 COM。
+不需要另接 USB 转串口模块，不要把蓝色 ESP USB 底板的 TX 并接到开发板/ESP 串口上。
+不要把 PA0/PA1 另接到其他输出设备。
+
+操作：
+1. 在 CCS 中选中 Lab4_Clock_WiFi，按 F5 刷新，确认出现 uart_log.c 和 uart_log.h。
+2. Build Project，Debug 下载，然后 Resume 运行；仅编译不会更新开发板中的程序。
+3. 在设备管理器的“端口（COM 和 LPT）”找到开发板的 Stellaris Virtual Serial Port 或对应 TI ICDI 虚拟串口。
+   COM 号由电脑实际分配，不一定是原来 ESP USB 底板使用的 COM3。
+4. 在 USR-TCP232-Test 左侧串口区域选择上述 COM，设置 115200 / NONE / 8 bit / 1 bit 并打开。
+   关闭 Receive as HEX，按文本显示。右侧 TCP Server 不需要打开。
+   同一 COM 同时只能由一个串口工具打开；CCS 程序保持 Resume 状态。
+5. 打开手机热点，按 SW1。日志会显示本次请求的服务器、请求序号、实际 NTP 回复的时间戳、
+   UTC、解析得到的北京时间、往返耗时，以及真正写入时钟的北京时间和成功次数。
+6. 成功后等两次请求开始间隔超过 10 秒，再按 SW1；应出现新请求和增加的成功次数。
+   若在开机之后才打开串口，可能看不到开机提示，但下一次按 SW1 仍会输出完整校时日志。
+
+输出格式示例（仅说明格式；实际时间、时间戳和请求序号来自本次网络回复）：
+[NTP] Opening UDP port 123 on: ntp.aliyun.com
+[NTP] Sending 48-byte request; sequence: 1
+[NTP] Valid reply bytes: 48
+[NTP] Transmit seconds (since 1900): ...
+[PARSE] Unix seconds (UTC): ...
+[PARSE] UTC: 02:34:56.12
+[PARSE] Beijing (UTC+8): 10:34:56.12
+[NTP] RTT milliseconds: 120
+[CLOCK] Applied Beijing (UTC+8): 10:34:56.18
+[SYNC] OK; successful sync count: 1
+
+PARSE 表示服务器时间换算结果，CLOCK 表示补偿网络/处理延迟后实际写入时钟的值。
+日志记录的是对应事件发生时的时间，电脑收到/显示日志时表盘可能已经向前走了一小段时间；
+误差小于 2 秒仍应使用正在走时的屏幕与手机自动校时后的北京时间直接比较。
+
+失败会打印错误编号、原因，并明确说明本次未用网络时间修改时钟。
+日志不会输出热点密码，也不会把电脑日志发给 ESP。
+发送使用 2048 字节队列，在主循环中有界、非阻塞地发送；电脑不打开串口也不妨碍时钟工作。
+队列满时丢弃完整日志行，g_uart_log_dropped 记录次数，恢复后打印告警，避免破碎时间行。
+
+本次软件验证：应以更新后的编译和检查结果为准；UART0 实机输出仍需下载后检查。
+此前的一键联网校时功能已由用户在实物上确认成功，本次未代为烧录。
+板载虚拟串口参考：TI TM4C123G LaunchPad 用户手册第 2.3.1 节
+https://www.ti.com/lit/ug/spmu296/spmu296.pdf

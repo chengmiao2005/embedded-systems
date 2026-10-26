@@ -1,0 +1,18 @@
+# CCS generated output and local workspace state
+**/Debug/*
+**/Release/
+**/BuildCheck/
+**/.launches/
+**/.metadata/
+**/.jxbrowser.userdata/
+**/__pycache__/
+*.obj
+*.out
+*.map
+*.d
+*.log
+*.bak
+# Required TI CCS prebuilt library
+!**/driverlib/ccs/Debug/driverlib.lib
+# Local upload bookkeeping
+.sync-manifest.json
